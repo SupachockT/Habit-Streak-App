@@ -4,153 +4,183 @@ open Elmish
 open SAFE
 open Shared
 
+let habitEmojis = [
+    "🏋️‍♂️"; "🏃‍♀️"; "🚴‍♂️";  // Exercise
+    "🥦"; "🍎"; "🍉";          // Healthy Eating
+    "🧘‍♂️"; "☕"; "🌱";        // Mindfulness
+    "📚"; "✏️"; "📖";          // Reading
+    "👫"; "🤝"; "🎉";          // Social Habits
+    "✅"; "📝"; "⏰"           // Productivity
+]
+
+type InputCard = { Emoji: string; Habit: string }
+
 type Model = {
-    Todos: RemoteData<Todo list>
-    Input: string
-    IsModalOpen : bool
+    IsCardHovered: bool
+    IsFormOpen: bool 
+    IsEmojiDropDownOpen: bool
+    InputCard: InputCard option
 }
 
 type Msg =
-    | SetInput of string
-    | LoadTodos of ApiCall<unit, Todo list>
-    | SaveTodo of ApiCall<string, Todo>
-    | OpenModal
-    | CloseModal
+    | SetCardHover of bool
+    | SetFormOpen of bool
+    | SetEmojiDropDown of bool
+    | SaveInputCard of string * string
 
-let todosApi = Api.makeProxy<ITodosApi> ()
+let todosApi = Api.makeProxy<IHabitsApi> ()
 
 let init () =
-    let initialModel = { Todos = NotStarted; Input = ""; IsModalOpen = false }
-    let initialCmd = LoadTodos(Start()) |> Cmd.ofMsg
+    let initialModel = { IsCardHovered = false; IsFormOpen = false; IsEmojiDropDownOpen = false; InputCard = None}
+    let initialCmd = Cmd.none
 
     initialModel, initialCmd
 
 let update msg model =
     match msg with
-    | SetInput value -> { model with Input = value }, Cmd.none
-    | LoadTodos msg ->
-        match msg with
-        | Start() ->
-            let loadTodosCmd = Cmd.OfAsync.perform todosApi.getTodos () (Finished >> LoadTodos)
-
-            { model with Todos = Loading }, loadTodosCmd
-        | Finished todos -> { model with Todos = Loaded todos }, Cmd.none
-    | SaveTodo msg ->
-        match msg with
-        | Start todoText ->
-            let saveTodoCmd =
-                let todo = Todo.create todoText
-                Cmd.OfAsync.perform todosApi.addTodo todo (Finished >> SaveTodo)
-
-            { model with Input = "" }, saveTodoCmd
-        | Finished todo ->
-            {
-                model with
-                    Todos = model.Todos |> RemoteData.map (fun todos -> todos @ [ todo ])
-            },
-            Cmd.none
-    | OpenModal -> { model with IsModalOpen = true }, Cmd.none
-    | CloseModal -> { model with IsModalOpen = false }, Cmd.none
+    | SetCardHover isHovered -> { model with IsCardHovered = isHovered }, Cmd.none
+    | SetFormOpen isOpen ->
+        match isOpen with
+        | true -> { model with IsFormOpen = true }, Cmd.none
+        | false -> { model with IsFormOpen = false; InputCard = None }, Cmd.none
+    | SetEmojiDropDown isOpen -> { model with IsEmojiDropDownOpen = isOpen }, Cmd.none
+    | SaveInputCard (emoji, habit) -> 
+        let newCard = { Emoji = emoji; Habit = habit }
+        {model with InputCard = Some newCard },Cmd.none
 
 open Feliz
 open Feliz.DaisyUI
 
 module ViewComponents =
-    let todoAction model dispatch =
+    let InputCardEmoji model dispatch =
+        let emojis = habitEmojis
+
+        let selectEmoji emoji = dispatch (SaveInputCard (emoji, ""))
+
         Html.div [
-            prop.className "flex flex-col sm:flex-row mt-4 gap-4"
+            prop.className "relative justify-self-start self-center ml-10"
+            prop.children [
+                Html.div [
+                    prop.className "text-6xl flex items-center justify-center"           
+                    prop.onClick ( fun _ -> dispatch (SetEmojiDropDown (not model.IsEmojiDropDownOpen)) )     
+                    prop.children [
+                        match model.InputCard with
+                            | Some card -> Html.p card.Emoji
+                            | None -> 
+                                Html.button [
+                                    prop.className "btn btn-neutral flex items-center"
+                                    prop.children [
+                                        Html.i [ prop.className "fas fa-upload mr-2" ]
+                                        Html.span [ prop.text "Select" ]
+                                    ]
+                                ]
+                    ]
+                ]
+
+                // Emoji Dropdown
+                match model.IsEmojiDropDownOpen with
+                    | true -> 
+                        Html.div [
+                            prop.className "absolute z-10 bg-white shadow-lg border border-gray-300 mt-1 rounded"
+                            prop.children [
+                                for emoji in emojis do
+                                    Html.div [
+                                        prop.className "p-2 cursor-pointer hover:bg-gray-100 text-xl"
+                                        prop.text emoji
+                                        prop.onClick (fun _ -> selectEmoji emoji; dispatch (SetEmojiDropDown (not model.IsEmojiDropDownOpen))) // Select emoji on click
+                                    ]
+                            ]
+                        ]
+                    | _ -> ()
+            ]
+        ]
+    let InputCardHabit model dispatch =
+        let currentHabit =
+            match model.InputCard with 
+            | Some card -> card.Habit
+            | None -> ""
+        
+        let isEmojiSelected = 
+            match model.InputCard with
+            | Some card when card.Emoji <> "" -> true
+            | _ -> false
+
+        Html.div [
+            prop.className "flex items-center justify-center flex-auto"
             prop.children [
                 Html.input [
-                    prop.className
-                        "shadow appearance-none border rounded w-full py-2 px-3 outline-none focus:ring-2 ring-teal-300 text-grey-darker"
-                    prop.value model.Input
-                    prop.placeholder "What needs to be done?"
-                    prop.autoFocus true
-                    prop.onChange (SetInput >> dispatch)
-                    prop.onKeyPress (fun ev ->
-                        if ev.key = "Enter" then
-                            dispatch (SaveTodo(Start model.Input)))
+                    prop.className "input input-bordered w-full max-w-xs"
+                    prop.placeholder "Enter your habit name"
+                    prop.value currentHabit
+                    prop.disabled (not isEmojiSelected)
+                    prop.onChange (fun newValue ->
+                        match model.InputCard with
+                        | Some card -> dispatch (SaveInputCard (card.Emoji, newValue))
+                        | None -> dispatch (SaveInputCard ("", newValue))
+                    )
                 ]
-                Html.button [
-                    prop.className
-                        "flex-no-shrink p-2 px-12 rounded bg-teal-600 outline-none focus:ring-2 ring-teal-300 font-bold text-white hover:bg-teal disabled:opacity-30 disabled:cursor-not-allowed"
-                    prop.disabled (Todo.isValid model.Input |> not)
-                    prop.onClick (fun _ -> dispatch (SaveTodo(Start model.Input)))
-                    prop.text "Add"
+                Html.img [
+                    prop.className "justify-self-end self-start cursor-pointer"
+                    prop.src "/prev-icon.svg"
+                    prop.alt "go back"
+                    prop.onClick (fun ev ->
+                        ev.stopPropagation()
+                        dispatch (SetFormOpen false)
+                    )
+                ]
+                Html.img [
+                    prop.className "justify-self-end self-end cursor-pointer"
+                    prop.src "/next-icon.svg"
+                    prop.alt "go next"
+                    prop.onClick (fun ev ->
+                        ev.stopPropagation()
+                        dispatch (SetFormOpen false)
+                    )
                 ]
             ]
         ]
 
-    let todoList model dispatch =
+    let InputCardView model dispatch = 
         Html.div [
-            prop.className "bg-white/80 rounded-md shadow-md p-4 w-5/6 lg:w-3/4 lg:max-w-2xl"
+            prop.className ("h-40 w-4/12 rounded shadow-xl flex bg-chineseviolet" + 
+                (if model.IsCardHovered && not model.IsFormOpen then " hover:bg-mountbattenpink" else ""))
+            prop.onMouseEnter (fun _ -> dispatch (SetCardHover true))
+            prop.onMouseLeave (fun _ -> dispatch (SetCardHover false))
+            prop.onClick (fun _ -> dispatch (SetFormOpen true))
             prop.children [
-                Html.ol [
-                    prop.className "list-decimal ml-6"
-                    prop.children [
-                        match model.Todos with
-                        | NotStarted -> Html.text "Not Started."
-                        | Loading -> Html.text "Loading..."
-                        | Loaded todos ->
-                            for todo in todos do
-                                Html.li [ prop.className "my-1"; prop.text todo.Description ]
+                match model.IsFormOpen with
+                | true -> 
+                    InputCardEmoji model dispatch
+                    InputCardHabit model dispatch
+                | false ->
+                    Html.div [
+                        prop.className "flex justify-center w-full cursor-pointer"
+                        prop.children [
+                            Html.img [
+                                prop.src "/add-icon.svg"
+                                prop.alt "Add Your Habit"
+                            ]
+                        ]
                     ]
-                ]
-
-                todoAction model dispatch
             ]
         ]
 
 let view model dispatch =
     Html.section [
-        prop.className "relative h-screen w-screen bg-cp1"
+        prop.className "h-screen w-screen bg-davygray"
 
         prop.children [
             Html.h1 [
-                prop.className "flex justify-center py-6 font-semibold text-3xl text-cp4"
+                prop.className "py-6 mb-10 flex justify-center font-semibold text-3xl text-paledogwood"
                 prop.text "HABIT STREAK APP!"
             ]
 
-            //Button
+            //Container
             Html.div [
-                prop.className "p-4 absolute bottom-0 right-0"
+                prop.className "p-4 flex flex-col items-center gap-4 border-dashed border-2 border-sage"
                 prop.children [
-                    Daisy.button.button [
-                        prop.className "bg-cp3 text-xl text-cp2"
-                        prop.text "Add"
-                        button.circle
-                        button.lg
-                        prop.onClick (fun _ -> dispatch OpenModal)
-                    ]
+                    ViewComponents.InputCardView model dispatch
                 ]
             ]
-
-            //Modal
-            if model.IsModalOpen then
-                Html.div [
-                    prop.className "modal modal-open"
-                    prop.children [
-                        Html.div [
-                            prop.className "modal-box relative"
-                            prop.children [
-                                Html.h3 [ prop.className "font-bold text-lg flex justify-center"; prop.text "Add a New Habit" ]
-
-                                // Button to close the modal
-                                Html.button [
-                                    prop.className "absolute top-0 right-2 text-red-500 font-bold text-xl"
-                                    prop.text "✕"
-                                    prop.onClick (fun _ -> dispatch CloseModal)
-                                ]
-                            ]
-                        ]
-                    ]
-                ]
         ]
     ]
-
-            // Html.div [
-            //     prop.className "flex flex-col items-center justify-center h-full"
-            //     prop.children [
-            //         ViewComponents.todoList model dispatch
-            //     ]
-            // ]

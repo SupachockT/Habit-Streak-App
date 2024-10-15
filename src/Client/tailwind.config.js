@@ -8,10 +8,11 @@ module.exports = {
     theme: {
         extend: {
             colors: {
-                cp1 : '#343131',
-                cp2 : '#A04747',
-                cp3 : '#D8A25E',
-                cp4 : '#EEDF7A'
+                davygray : '#5A5353',
+                mountbattenpink : '#A07178',
+                paledogwood : '#E6CCBE',
+                chineseviolet : '#776274',
+                sage : '#C8CC92'
             }
         },
     },
