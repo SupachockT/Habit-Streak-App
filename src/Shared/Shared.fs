@@ -2,37 +2,20 @@ namespace Shared
 
 open System
 
-type Habit = { Emoji: string; Habit: string }
-
-type IHabitsApi = {
-    getHabits: unit -> Async<Habit list>
-    //addHabits: Habit -> Async<Habit>
+type Habit = {
+    Id: int
+    Emoji: string
+    Name: string
+    StreakDate: DateTime option
+    Streak: int
+    isDone: bool
 }
 
+type InputCard = { Emoji: string; Habit: string }
 
-
-
-
-
-
-
-
-
-
-
-
-// type Todo = { Id: Guid; Description: string }
-
-// module Todo =
-//     let isValid (description: string) =
-//         String.IsNullOrWhiteSpace description |> not
-
-//     let create (description: string) = {
-//         Id = Guid.NewGuid()
-//         Description = description
-//     }
-
-// type ITodosApi = {
-//     getTodos: unit -> Async<Todo list>
-//     addTodo: Todo -> Async<Todo>
-// }
+type IHabitsApi = {
+    getAllHabits: unit -> Async<Habit list>
+    createHabit: InputCard -> Async<int>
+    updateStreak: int * bool -> Async<bool>
+    deleteHabit: int -> Async<bool>
+}
